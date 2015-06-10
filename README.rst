@@ -64,7 +64,7 @@ Example
                 assert ret == (1,), ret
 
 
-       asyncio.get_event_loop().run_until_complete(test_select())
+    asyncio.get_event_loop().run_until_complete(test_select())
 
 
 Example of SQLAlchemy optional integration
