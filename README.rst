@@ -1,4 +1,4 @@
-aiopg
+aiopg-trollius
 =======
 .. image:: https://travis-ci.org/aio-libs/aiopg.svg?branch=master
     :target: https://travis-ci.org/aio-libs/aiopg
@@ -7,27 +7,30 @@ aiopg
 
 **aiopg** is a library for accessing a PostgreSQL_ database
 from the asyncio_ (PEP-3156/tulip) framework. It wraps
-asynchronous features of the Psycopg database driver.
+asynchronous features of the Psycopg database driver. This
+project, **aiopg-trollius** is a port to use trollius
+(basically an asyncio-like library for python 2.x +).
 
 Example
 -------
 
 ::
 
-   import asyncio
-   from aiopg.pool import create_pool
+   from trollius import From, Return
+   import trollius as asyncio
+   from aiopg_trollius.pool import create_pool
 
    dsn = 'dbname=jetty user=nick password=1234 host=localhost port=5432'
 
 
    @asyncio.coroutine
    def test_select():
-       pool = yield from create_pool(dsn)
+       pool = yield From(create_pool(dsn))
 
-       with (yield from pool) as conn:
-           cur = yield from conn.cursor()
-           yield from cur.execute('SELECT 1')
-           ret = yield from cur.fetchone()
+       with (yield From(pool.aquire()) as conn:
+           cur = yield From(conn.cursor())
+           yield From(cur.execute('SELECT 1'))
+           ret = yield From(cur.fetchone())
            assert ret == (1,), ret
 
 
@@ -36,6 +39,8 @@ Example
 
 Example of SQLAlchemy optional integration
 -------------------------------------------
+
+**Note: SQLAlchemy integration is NOT ported**
 
 ::
 
@@ -70,6 +75,8 @@ Example of SQLAlchemy optional integration
 
 .. _PostgreSQL: http://www.postgresql.org/
 .. _asyncio: http://docs.python.org/3.4/library/asyncio.html
+
+**Note: Tests were not ported**
 
 Please use::
 
