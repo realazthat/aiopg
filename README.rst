@@ -27,7 +27,7 @@ Example
    def test_select():
        pool = yield From(create_pool(dsn))
 
-       with (yield From(pool.aquire()) as conn:
+       with (yield From(pool.acquire()) as conn:
            cur = yield From(conn.cursor())
            yield From(cur.execute('SELECT 1'))
            ret = yield From(cur.fetchone())
