@@ -16,25 +16,54 @@ Example
 
 ::
 
-   from trollius import From, Return
-   import trollius as asyncio
-   from aiopg_trollius.pool import create_pool
+    from trollius import From, Return
+    import trollius as asyncio
+    from aiopg_trollius.pool import create_pool
 
-   dsn = 'dbname=jetty user=nick password=1234 host=localhost port=5432'
-
-
-   @asyncio.coroutine
-   def test_select():
-       pool = yield From(create_pool(dsn))
-
-       with (yield From(pool.acquire()) as conn:
-           cur = yield From(conn.cursor())
-           yield From(cur.execute('SELECT 1'))
-           ret = yield From(cur.fetchone())
-           assert ret == (1,), ret
+    dsn = 'dbname=jetty user=nick password=1234 host=localhost port=5432'
 
 
-   asyncio.get_event_loop().run_until_complete(test_select())
+    @asyncio.coroutine
+    def yield_conn_context(pool):
+        """
+        Helper to manage the connection context.
+        """
+        conn = yield From(pool.acquire())
+
+        @contextmanager
+        def context():
+
+            try:
+                yield conn
+            finally:
+                pool.release(conn)
+        raise Return( context() )
+
+
+    @asyncio.coroutine
+    def yield_cur_context(conn):
+        """
+        Helper to manage the cursor context.
+        """
+        cur = yield From(conn.cursor())
+
+        raise Return( closing(cur) )
+
+
+
+    @asyncio.coroutine
+    def test_select():
+        pool = yield From(create_pool(dsn))
+
+        with (yield From(yield_conn_context(pool)) as conn:
+            with (yield From(yield_cur_context(conn))) as cur:
+                cur = yield From(conn.cursor())
+                yield From(cur.execute('SELECT 1'))
+                ret = yield From(cur.fetchone())
+                assert ret == (1,), ret
+
+
+       asyncio.get_event_loop().run_until_complete(test_select())
 
 
 Example of SQLAlchemy optional integration
