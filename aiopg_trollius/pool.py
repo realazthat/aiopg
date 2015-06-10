@@ -1,11 +1,5 @@
-try:
-    # Use builtin asyncio on Python 3.4+, or Tulip on Python 3.3
-    import asyncio
-    from asyncio import From,Return
-except ImportError:
-    # Use Trollius on Python <= 3.2
-    import trollius as asyncio
-    from trollius import From,Return
+import trollius as asyncio
+from trollius import From,Return
 
 import collections
 import sys

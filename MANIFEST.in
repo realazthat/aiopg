@@ -1,6 +1,6 @@
 include LICENSE.txt
 include CHANGES.txt
 include README.rst
-graft aiopg
+graft aiopg_trollius
 global-exclude *.pyc
 exclude tests/**

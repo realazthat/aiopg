@@ -4,16 +4,19 @@ import sys
 from setuptools import setup, find_packages
 
 
-install_requires = ['psycopg2>=2.5.2']
+install_requires = ['psycopg2>=2.5.2', 'trollius']
 
 PY_VER = sys.version_info
 
+"""
 if PY_VER >= (3, 4):
     pass
 elif PY_VER >= (3, 3):
     install_requires.append('asyncio')
 else:
     raise RuntimeError("aiopg doesn't suppport Python earlier than 3.3")
+"""
+install_requires.append('trollius')
 
 
 def read(f):
@@ -24,18 +27,19 @@ extras_require = {'sa': ['sqlalchemy>=0.9'], }
 
 def read_version():
     regexp = re.compile(r"^__version__\W*=\W*'([\d.abrc]+)'")
-    init_py = os.path.join(os.path.dirname(__file__), 'aiopg', '__init__.py')
+    init_py = os.path.join(os.path.dirname(__file__), 'aiopg_trollius', '__init__.py')
     with open(init_py) as f:
         for line in f:
             match = regexp.match(line)
             if match is not None:
                 return match.group(1)
         else:
-            raise RuntimeError('Cannot find version in aiopg/__init__.py')
+            raise RuntimeError('Cannot find version in aiopg_trollius/__init__.py')
 
 classifiers = [
     'License :: OSI Approved :: BSD License',
     'Intended Audience :: Developers',
+    'Programming Language :: Python :: 2.7',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
@@ -48,9 +52,9 @@ classifiers = [
 ]
 
 
-setup(name='aiopg',
+setup(name='aiopg_trollius',
       version=read_version(),
-      description=('Postgres integration with asyncio.'),
+      description=('Postgres integration with trollius.'),
       long_description='\n\n'.join((read('README.rst'), read('CHANGES.txt'))),
       classifiers=classifiers,
       platforms=['POSIX'],
@@ -62,6 +66,6 @@ setup(name='aiopg',
       packages=find_packages(),
       install_requires=install_requires,
       extras_require=extras_require,
-      provides=['aiopg'],
+      provides=['aiopg_trollius'],
       requires=['psycopg2'],
       include_package_data = True)
