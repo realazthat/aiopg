@@ -1,4 +1,12 @@
-import asyncio
+try:
+    # Use builtin asyncio on Python 3.4+, or Tulip on Python 3.3
+    import asyncio
+    from asyncio import From,Return
+except ImportError:
+    # Use Trollius on Python <= 3.2
+    import trollius as asyncio
+    from trollius import From,Return
+
 import collections
 
 
@@ -9,7 +17,7 @@ from .log import logger
 
 
 @asyncio.coroutine
-def create_pool(dsn=None, *, minsize=10, maxsize=10,
+def create_pool(dsn=None, forcenamedarguments=None, minsize=10, maxsize=10,
                 loop=None, timeout=TIMEOUT,
                 enable_json=True, enable_hstore=True,
                 echo=False,
@@ -22,16 +30,18 @@ def create_pool(dsn=None, *, minsize=10, maxsize=10,
                 echo=echo,
                 **kwargs)
     if minsize > 0:
-        with (yield from pool._cond):
-            yield from pool._fill_free_pool(False)
-    return pool
+        with (yield From( pool._cond )):
+            yield From( pool._fill_free_pool(False) )
+    raise Return( pool )
 
 
 class Pool(asyncio.AbstractServer):
     """Connection pool"""
 
-    def __init__(self, dsn, minsize, maxsize, loop, timeout, *,
-                 enable_json, enable_hstore, echo, **kwargs):
+    def __init__(self, dsn, minsize, maxsize, loop, timeout, forcenamedarguments=None,
+                 enable_json=True, enable_hstore=True,
+                 echo=False, **kwargs):
+    
         if minsize < 0:
             raise ValueError("minsize should be zero or greater")
         if maxsize < minsize:
@@ -79,10 +89,10 @@ class Pool(asyncio.AbstractServer):
     @asyncio.coroutine
     def clear(self):
         """Close all free connections in pool."""
-        with (yield from self._cond):
+        with (yield From( self._cond )):
             while self._free:
                 conn = self._free.popleft()
-                yield from conn.close()
+                yield From( conn.close() )
             self._cond.notify()
 
     def close(self):
@@ -114,7 +124,7 @@ class Pool(asyncio.AbstractServer):
         """Wait for closing all pool's connections."""
 
         if self._closed:
-            return
+            raise Return()
         if not self._closing:
             raise RuntimeError(".wait_closed() should be called "
                                "after .close()")
@@ -123,9 +133,9 @@ class Pool(asyncio.AbstractServer):
             conn = self._free.popleft()
             conn.close()
 
-        with (yield from self._cond):
+        with (yield From(self._cond)):
             while self.size > self.freesize:
-                yield from self._cond.wait()
+                yield From( self._cond.wait() )
 
         self._closed = True
 
@@ -134,46 +144,46 @@ class Pool(asyncio.AbstractServer):
         """Acquire free connection from the pool."""
         if self._closing:
             raise RuntimeError("Cannot acquire connection after closing pool")
-        with (yield from self._cond):
+        with (yield From( self._cond )):
             while True:
-                yield from self._fill_free_pool(True)
+                yield From( self._fill_free_pool(True) )
                 if self._free:
                     conn = self._free.popleft()
                     assert not conn.closed, conn
                     assert conn not in self._used, (conn, self._used)
                     self._used.add(conn)
-                    return conn
+                    raise Return( conn )
                 else:
-                    yield from self._cond.wait()
+                    yield From( self._cond.wait() )
 
     @asyncio.coroutine
     def _fill_free_pool(self, override_min):
         while self.size < self.minsize:
             self._acquiring += 1
             try:
-                conn = yield from connect(
+                conn = yield From( connect(
                     self._dsn, loop=self._loop, timeout=self._timeout,
                     enable_json=self._enable_json,
                     enable_hstore=self._enable_hstore,
                     echo=self._echo,
-                    **self._conn_kwargs)
+                    **self._conn_kwargs) )
                 # raise exception if pool is closing
                 self._free.append(conn)
                 self._cond.notify()
             finally:
                 self._acquiring -= 1
         if self._free:
-            return
+            raise Return()
 
         if override_min and self.size < self.maxsize:
             self._acquiring += 1
             try:
-                conn = yield from connect(
+                conn = yield From( connect(
                     self._dsn, loop=self._loop, timeout=self._timeout,
                     enable_json=self._enable_json,
                     enable_hstore=self._enable_hstore,
                     echo=self._echo,
-                    **self._conn_kwargs)
+                    **self._conn_kwargs))
                 # raise exception if pool is closing
                 self._free.append(conn)
                 self._cond.notify()
@@ -182,7 +192,7 @@ class Pool(asyncio.AbstractServer):
 
     @asyncio.coroutine
     def _wakeup(self):
-        with (yield from self._cond):
+        with (yield From( self._cond )):
             self._cond.notify()
 
     def release(self, conn):
@@ -212,13 +222,13 @@ class Pool(asyncio.AbstractServer):
 
     @asyncio.coroutine
     def cursor(self, name=None, cursor_factory=None,
-               scrollable=None, withhold=False, *, timeout=None):
+               scrollable=None, withhold=False, forcenamedarguments=None, timeout=None):
         """XXX"""
-        conn = yield from self.acquire()
-        cur = yield from conn.cursor(name=name, cursor_factory=cursor_factory,
+        conn = yield From( self.acquire() )
+        cur = yield From( conn.cursor(name=name, cursor_factory=cursor_factory,
                                      scrollable=scrollable, withhold=withhold,
-                                     timeout=timeout)
-        return _CursorContextManager(self, conn, cur)
+                                     timeout=timeout) )
+        raise Return( _CursorContextManager(self, conn, cur) )
 
     def __enter__(self):
         raise RuntimeError(
@@ -242,8 +252,8 @@ class Pool(asyncio.AbstractServer):
         #         <block>
         #     finally:
         #         conn.release()
-        conn = yield from self.acquire()
-        return _ConnectionContextManager(self, conn)
+        conn = yield From( self.acquire() )
+        raise Return( _ConnectionContextManager(self, conn) )
 
 
 class _ConnectionContextManager:

@@ -1,4 +1,11 @@
-import asyncio
+try:
+    # Use builtin asyncio on Python 3.4+, or Tulip on Python 3.3
+    import asyncio
+    from asyncio import From,Return
+except ImportError:
+    # Use Trollius on Python <= 3.2
+    import trollius as asyncio
+    from trollius import From,Return
 
 import psycopg2
 
@@ -88,7 +95,7 @@ class Cursor:
         self._impl.withhold = val
 
     @asyncio.coroutine
-    def execute(self, operation, parameters=None, *, timeout=None):
+    def execute(self, operation, parameters=None, forcenamedarguments=None, timeout=None):
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as sequence or mapping and will be
@@ -103,7 +110,7 @@ class Cursor:
             logger.info(operation)
             logger.info("%r", parameters)
         self._impl.execute(operation, parameters)
-        yield from self._conn._poll(waiter, timeout)
+        yield From( self._conn._poll(waiter, timeout) )
 
     @asyncio.coroutine
     def executemany(self, operation, seq_of_parameters):
@@ -112,7 +119,7 @@ class Cursor:
             "executemany cannot be used in asynchronous mode")
 
     @asyncio.coroutine
-    def callproc(self, procname, parameters=None, *, timeout=None):
+    def callproc(self, procname, parameters=None, forcenamedarguments=None, timeout=None):
         """Call a stored database procedure with the given name.
 
         The sequence of parameters must contain one entry for each
@@ -129,7 +136,7 @@ class Cursor:
             logger.info("CALL %s", procname)
             logger.info("%r", parameters)
         self._impl.callproc(procname, parameters)
-        yield from self._conn._poll(waiter, timeout)
+        yield From( self._conn._poll(waiter, timeout) )
 
     @asyncio.coroutine
     def mogrify(self, operation, parameters=None):
@@ -142,7 +149,7 @@ class Cursor:
         ret = self._impl.mogrify(operation, parameters)
         assert not self._conn._isexecuting(), ("Don't support server side "
                                                "mogrify")
-        return ret
+        raise Return( ret )
 
     @asyncio.coroutine
     def setinputsizes(self, sizes):
@@ -164,7 +171,7 @@ class Cursor:
         ret = self._impl.fetchone()
         assert not self._conn._isexecuting(), ("Don't support server side "
                                                "cursors yet")
-        return ret
+        raise Return(ret)
 
     @asyncio.coroutine
     def fetchmany(self, size=None):
@@ -186,7 +193,7 @@ class Cursor:
         ret = self._impl.fetchmany(size)
         assert not self._conn._isexecuting(), ("Don't support server side "
                                                "cursors yet")
-        return ret
+        raise Return( ret )
 
     @asyncio.coroutine
     def fetchall(self):
@@ -199,7 +206,7 @@ class Cursor:
         ret = self._impl.fetchall()
         assert not self._conn._isexecuting(), ("Don't support server side "
                                                "cursors yet")
-        return ret
+        raise Return( ret )
 
     @asyncio.coroutine
     def scroll(self, value, mode="relative"):
@@ -213,7 +220,7 @@ class Cursor:
         ret = self._impl.scroll(value, mode)
         assert not self._conn._isexecuting(), ("Don't support server side "
                                                "cursors yet")
-        return ret
+        raise Return( ret )
 
     @property
     def arraysize(self):
@@ -352,8 +359,8 @@ class Cursor:
         return self._timeout
 
     def __iter__(self):
-        item = yield from self.fetchone()
+        item = yield From( self.fetchone() )
         if item is None:
             raise StopIteration
         else:
-            return item
+            raise Return( item )

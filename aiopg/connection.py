@@ -1,4 +1,11 @@
-import asyncio
+try:
+    # Use builtin asyncio on Python 3.4+, or Tulip on Python 3.3
+    import asyncio
+    from asyncio import From,Return
+except ImportError:
+    # Use Trollius on Python <= 3.2
+    import trollius as asyncio
+    from trollius import From,Return
 
 import psycopg2
 from psycopg2.extensions import (
@@ -16,24 +23,24 @@ TIMEOUT = 60.
 
 @asyncio.coroutine
 def _enable_hstore(conn):
-    cur = yield from conn.cursor()
-    yield from cur.execute("""\
+    cur = yield From(conn.cursor())
+    yield From(cur.execute("""\
 SELECT t.oid, typarray
 FROM pg_type t JOIN pg_namespace ns
     ON typnamespace = ns.oid
 WHERE typname = 'hstore';
-""")
+"""))
     rv0, rv1 = [], []
-    for oids in (yield from cur.fetchall()):
+    for oids in (yield From( cur.fetchall())):
         rv0.append(oids[0])
         rv1.append(oids[1])
 
     cur.close()
-    return tuple(rv0), tuple(rv1)
+    raise Return( tuple(rv0), tuple(rv1))
 
 
 @asyncio.coroutine
-def connect(dsn=None, *, timeout=TIMEOUT, loop=None,
+def connect(dsn=None, forcenamedarguments=None, timeout=TIMEOUT, loop=None,
             enable_json=True, enable_hstore=True, echo=False, **kwargs):
     """A factory for connecting to PostgreSQL.
 
@@ -48,15 +55,15 @@ def connect(dsn=None, *, timeout=TIMEOUT, loop=None,
 
     waiter = asyncio.Future(loop=loop)
     conn = Connection(dsn, loop, timeout, waiter, bool(echo), **kwargs)
-    yield from conn._poll(waiter, timeout)
+    yield From( conn._poll(waiter, timeout) )
     if enable_json:
         extras.register_default_json(conn._conn)
     if enable_hstore:
-        oids = yield from _enable_hstore(conn)
+        oids = yield From( _enable_hstore(conn))
         if oids is not None:
             oid, array_oid = oids
             extras.register_hstore(conn._conn, oid=oid, array_oid=array_oid)
-    return conn
+    raise Return( conn )
 
 
 class Connection:
@@ -152,7 +159,7 @@ class Connection:
         assert waiter is self._waiter, (waiter, self._waiter)
         self._ready()
         try:
-            yield from asyncio.wait_for(self._waiter, timeout, loop=self._loop)
+            yield From( asyncio.wait_for(self._waiter, timeout, loop=self._loop))
         finally:
             self._waiter = None
 
@@ -175,11 +182,11 @@ class Connection:
         if timeout is None:
             timeout = self._timeout
 
-        impl = yield from self._cursor(name=name,
+        impl = yield From( self._cursor(name=name,
                                        cursor_factory=cursor_factory,
                                        scrollable=scrollable,
-                                       withhold=withhold)
-        return Cursor(self, impl, timeout, self._echo)
+                                       withhold=withhold) )
+        raise Return( Cursor(self, impl, timeout, self._echo) )
 
     @asyncio.coroutine
     def _cursor(self, name=None, cursor_factory=None,
@@ -190,7 +197,7 @@ class Connection:
         else:
             impl = self._conn.cursor(name=name, cursor_factory=cursor_factory,
                                      scrollable=scrollable, withhold=withhold)
-        return impl
+        raise Return( impl )
 
     def close(self):
         """Remove the connection from the event_loop and close it."""
@@ -273,7 +280,7 @@ class Connection:
         self._conn.cancel()
         if timeout is None:
             timeout = self._timeout
-        yield from self._poll(waiter, timeout)
+        yield From( self._poll(waiter, timeout) )
 
     @asyncio.coroutine
     def reset(self):
@@ -291,7 +298,7 @@ class Connection:
         return self._dsn
 
     @asyncio.coroutine
-    def set_session(self, *, isolation_level=None, readonly=None,
+    def set_session(self, forcenamedarguments=None, isolation_level=None, readonly=None,
                     deferrable=None, autocommit=None):
         raise psycopg2.ProgrammingError(
             "set_session cannot be used in asynchronous mode")
@@ -346,17 +353,17 @@ class Connection:
     @asyncio.coroutine
     def get_backend_pid(self):
         """Returns the PID of the backend server process."""
-        return self._conn.get_backend_pid()
+        raise Return( self._conn.get_backend_pid() )
 
     @asyncio.coroutine
     def get_parameter_status(self, parameter):
         """Look up a current parameter setting of the server."""
-        return self._conn.get_parameter_status(parameter)
+        raise Return( self._conn.get_parameter_status(parameter))
 
     @asyncio.coroutine
     def get_transaction_status(self):
         """Return the current session transaction status as an integer."""
-        return self._conn.get_transaction_status()
+        raise Return( self._conn.get_transaction_status())
 
     @property
     def protocol_version(self):
