@@ -23,12 +23,12 @@ PY_341 = sys.version_info >= (3, 4, 1)
 @asyncio.coroutine
 def _enable_hstore(conn):
     cur = yield From(conn.cursor())
-    yield From(cur.execute("""\
+    yield From(cur.execute("""
         SELECT t.oid, typarray
         FROM pg_type t JOIN pg_namespace ns
             ON typnamespace = ns.oid
         WHERE typname = 'hstore';
-        """)
+        """) )
     rv0, rv1 = [], []
     for oids in (yield From( cur.fetchall())):
         rv0.append(oids[0])
