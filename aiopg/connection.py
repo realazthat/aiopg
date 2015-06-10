@@ -6,6 +6,8 @@ except ImportError:
     # Use Trollius on Python <= 3.2
     import trollius as asyncio
     from trollius import From,Return
+import sys
+import warnings
 
 import psycopg2
 from psycopg2.extensions import (
@@ -18,18 +20,19 @@ from .cursor import Cursor
 __all__ = ('connect',)
 
 
-TIMEOUT = 60.
+TIMEOUT = 60.0
+PY_341 = sys.version_info >= (3, 4, 1)
 
 
 @asyncio.coroutine
 def _enable_hstore(conn):
     cur = yield From(conn.cursor())
     yield From(cur.execute("""\
-SELECT t.oid, typarray
-FROM pg_type t JOIN pg_namespace ns
-    ON typnamespace = ns.oid
-WHERE typname = 'hstore';
-"""))
+        SELECT t.oid, typarray
+        FROM pg_type t JOIN pg_namespace ns
+            ON typnamespace = ns.oid
+        WHERE typname = 'hstore';
+        """)
     rv0, rv1 = [], []
     for oids in (yield From( cur.fetchall())):
         rv0.append(oids[0])
@@ -55,7 +58,11 @@ def connect(dsn=None, forcenamedarguments=None, timeout=TIMEOUT, loop=None,
 
     waiter = asyncio.Future(loop=loop)
     conn = Connection(dsn, loop, timeout, waiter, bool(echo), **kwargs)
-    yield From( conn._poll(waiter, timeout) )
+    try:
+        yield From(conn._poll(waiter, timeout))
+    except Exception:
+        conn.close()
+        raise
     if enable_json:
         extras.register_default_json(conn._conn)
     if enable_hstore:
@@ -394,3 +401,10 @@ class Connection:
     def echo(self):
         """Return echo mode status."""
         return self._echo
+
+    if PY_341:  # pragma: no branch
+        def __del__(self):
+            if not self._conn.closed:
+                warnings.warn("Unclosed connection {!r}".format(self),
+                              ResourceWarning)
+                self.close()

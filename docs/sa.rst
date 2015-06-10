@@ -202,32 +202,30 @@ Connection
       :param query: a SQL query string or any :term:`sqlalchemy`
                     expression (see :ref:`core_toplevel`)
 
-      :param \*multiparams/\**params: represent bound parameter
-       values to be used in the execution.   Typically,
-       the format is either a collection of one or more
-       dictionaries passed to \*multiparams::
+      :param \*multiparams/\**params: represent bound parameter values
+       to be used in the execution.  Typically, the format is either a
+       dictionary passed to \*multiparams::
 
-           conn.execute(
+           yield from conn.execute(
                table.insert(),
-               {"id":1, "value":"v1"},
-               {"id":2, "value":"v2"}
+               {"id":1, "value":"v1"}
            )
 
        ...or individual key/values interpreted by \**params::
 
-           conn.execute(
+           yield from conn.execute(
                table.insert(), id=1, value="v1"
            )
 
-       In the case that a plain SQL string is passed, a collection of
-       tuples or individual values in \*multiparams may be passed::
+       In the case that a plain SQL string is passed, a tuple or
+       individual values in \*multiparams may be passed::
 
-           conn.execute(
+           yield from conn.execute(
                "INSERT INTO table (id, value) VALUES (%d, %s)",
-               (1, "v1"), (2, "v2")
+               (1, "v1")
            )
 
-           conn.execute(
+           yield from conn.execute(
                "INSERT INTO table (id, value) VALUES (%s, %s)",
                1, "v1"
            )
@@ -444,8 +442,9 @@ ResultProxy
       Closes the underlying :class:`aiopg.Cursor` corresponding to the
       execution.
 
-      Note that any data cached within this :class:`ResultProxy` is still available.
-      For some types of results, this may include buffered rows.
+      Note that any data cached within this :class:`ResultProxy` is
+      still available.  For some types of results, this may include
+      buffered rows.
 
       This method is called automatically when:
 

@@ -1,6 +1,29 @@
 CHANGES
 -------
 
+0.7.0 (2015-04-22)
+^^^^^^^^^^^^^^^^^^
+
+* Get rid of resource leak on connection failure.
+
+* Report ResourceWarning on non-closed connections.
+
+* Deprecate iteration protocol support in cursor and ResultProxy.
+
+* Release sa connection to pool on `connection.close()`.
+
+0.6.0 (2015-02-03)
+^^^^^^^^^^^^^^^^^^
+
+* Accept dict, list, tuple, named and positional parameters in
+  `SAConnection.execute()`
+
+0.5.2 (2014-12-08)
+^^^^^^^^^^^^^^^^^^
+
+* Minor release, fixes a bug that leaves connection in broken state
+  after `cursor.execute()` failure.
+
 0.5.1 (2014-10-31)
 ^^^^^^^^^^^^^^^^^^
 

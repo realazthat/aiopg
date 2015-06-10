@@ -2,6 +2,7 @@ import asyncio
 from aiopg import connect, sa, Cursor
 
 import unittest
+from unittest import mock
 
 from sqlalchemy import MetaData, Table, Column, Integer, String
 from sqlalchemy.schema import DropTable, CreateTable
@@ -20,8 +21,10 @@ class TestSAConnection(unittest.TestCase):
     def setUp(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
+        self.raw_connection = None
 
     def tearDown(self):
+        self.raw_connection.close()
         self.loop.close()
 
     @asyncio.coroutine
@@ -32,6 +35,7 @@ class TestSAConnection(unittest.TestCase):
                                   host='127.0.0.1',
                                   loop=self.loop,
                                   **kwargs)
+        self.raw_connection = conn
         cur = yield from conn.cursor()
         yield from cur.execute("DROP TABLE IF EXISTS sa_tbl")
         yield from cur.execute("CREATE TABLE sa_tbl "
@@ -39,7 +43,10 @@ class TestSAConnection(unittest.TestCase):
         yield from cur.execute("INSERT INTO sa_tbl (name)"
                                "VALUES ('first')")
         cur.close()
-        return sa.SAConnection(conn, sa.engine._dialect)
+
+        engine = mock.Mock(from_spec=sa.engine.Engine)
+        engine.dialect = sa.engine._dialect
+        return sa.SAConnection(conn, engine)
 
     def test_execute_text_select(self):
         @asyncio.coroutine
@@ -82,6 +89,62 @@ class TestSAConnection(unittest.TestCase):
             self.assertEqual('first', row[1])
             self.assertEqual('first', row['name'])
             self.assertEqual('first', row.name)
+
+        self.loop.run_until_complete(go())
+
+    def test_execute_sa_insert_with_dict(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect()
+            yield from conn.execute(tbl.insert(), {"id": 2, "name": "second"})
+
+            res = yield from conn.execute(tbl.select())
+            rows = list(res)
+            self.assertEqual(2, len(rows))
+            self.assertEqual((1, 'first'), rows[0])
+            self.assertEqual((2, 'second'), rows[1])
+
+        self.loop.run_until_complete(go())
+
+    def test_execute_sa_insert_with_tuple(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect()
+            yield from conn.execute(tbl.insert(), (2, "second"))
+
+            res = yield from conn.execute(tbl.select())
+            rows = list(res)
+            self.assertEqual(2, len(rows))
+            self.assertEqual((1, 'first'), rows[0])
+            self.assertEqual((2, 'second'), rows[1])
+
+        self.loop.run_until_complete(go())
+
+    def test_execute_sa_insert_named_params(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect()
+            yield from conn.execute(tbl.insert(), id=2, name="second")
+
+            res = yield from conn.execute(tbl.select())
+            rows = list(res)
+            self.assertEqual(2, len(rows))
+            self.assertEqual((1, 'first'), rows[0])
+            self.assertEqual((2, 'second'), rows[1])
+
+        self.loop.run_until_complete(go())
+
+    def test_execute_sa_insert_positional_params(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect()
+            yield from conn.execute(tbl.insert(), 2, "second")
+
+            res = yield from conn.execute(tbl.select())
+            rows = list(res)
+            self.assertEqual(2, len(rows))
+            self.assertEqual((1, 'first'), rows[0])
+            self.assertEqual((2, 'second'), rows[1])
 
         self.loop.run_until_complete(go())
 

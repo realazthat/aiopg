@@ -5,7 +5,6 @@ import psycopg2.tz
 import time
 import unittest
 
-
 from aiopg.connection import TIMEOUT
 
 
@@ -27,6 +26,7 @@ class TestCursor(unittest.TestCase):
                                          host='127.0.0.1',
                                          loop=self.loop,
                                          **kwargs))
+        self.addCleanup(conn.close)
         cur = yield from conn.cursor()
         yield from cur.execute("DROP TABLE IF EXISTS tbl")
         yield from cur.execute("CREATE TABLE tbl (id int, name varchar(255))")
@@ -52,7 +52,27 @@ class TestCursor(unittest.TestCase):
             conn = yield from self.connect()
             cur = yield from conn.cursor()
             self.assertEqual(None, cur.description)
-            # FIXME: add test for description after .execute
+            yield from cur.execute('SELECT * from tbl;')
+
+            self.assertEqual(len(cur.description), 2,
+                             'cursor.description describes too many columns')
+
+            self.assertEqual(len(cur.description[0]), 7,
+                             'cursor.description[x] tuples must have '
+                             '7 elements')
+
+            self.assertEqual(cur.description[0][0].lower(), 'id',
+                             'cursor.description[x][0] must return column '
+                             'name')
+
+            self.assertEqual(cur.description[1][0].lower(), 'name',
+                             'cursor.description[x][0] must return column '
+                             'name')
+
+            # Make sure self.description gets reset, cursor should be
+            # set to None in case of none resulting queries like DDL
+            yield from cur.execute('DROP TABLE IF EXISTS foobar;')
+            self.assertEqual(None, cur.description)
 
         self.loop.run_until_complete(go())
 
@@ -90,6 +110,7 @@ class TestCursor(unittest.TestCase):
             self.assertTrue(cur.closed)
             with self.assertRaises(psycopg2.InterfaceError):
                 yield from cur.execute('SELECT 1')
+            self.assertIsNone(conn._waiter)
 
         self.loop.run_until_complete(go())
 
@@ -363,6 +384,7 @@ class TestCursor(unittest.TestCase):
             cur.close()
             with self.assertRaises(psycopg2.InterfaceError):
                 yield from cur.callproc('inc', [1])
+            self.assertIsNone(conn._waiter)
 
         self.loop.run_until_complete(go())
 
@@ -434,18 +456,6 @@ class TestCursor(unittest.TestCase):
 
         self.loop.run_until_complete(go())
 
-    def test_iter(self):
-        @asyncio.coroutine
-        def go():
-            conn = yield from self.connect()
-            cur = yield from conn.cursor()
-            yield from cur.execute("SELECT * FROM tbl")
-            data = [(1, 'a'), (2, 'b'), (3, 'c')]
-            for item, tst in zip(cur, data):
-                self.assertEqual(item, tst)
-
-        self.loop.run_until_complete(go())
-
     def test_echo(self):
         @asyncio.coroutine
         def go():
@@ -461,5 +471,31 @@ class TestCursor(unittest.TestCase):
             conn = yield from self.connect()
             cur = yield from conn.cursor()
             self.assertFalse(cur.echo)
+
+        self.loop.run_until_complete(go())
+
+    def test_iter(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect()
+            cur = yield from conn.cursor()
+            yield from cur.execute("SELECT * FROM tbl")
+            data = [(1, 'a'), (2, 'b'), (3, 'c')]
+            for item, tst in zip(cur, data):
+                self.assertEqual(item, tst)
+
+        self.loop.run_until_complete(go())
+
+    def test_echo_callproc(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from self.connect(echo=True)
+            cur = yield from conn.cursor()
+
+            # TODO: check log records
+            yield from cur.callproc('inc', [1])
+            ret = yield from cur.fetchone()
+            self.assertEqual((2,), ret)
+            cur.close()
 
         self.loop.run_until_complete(go())

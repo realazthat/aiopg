@@ -6,6 +6,7 @@ except ImportError:
     # Use Trollius on Python <= 3.2
     import trollius as asyncio
     from trollius import From,Return
+import warnings
 
 import psycopg2
 
@@ -109,8 +110,13 @@ class Cursor:
         if self._echo:
             logger.info(operation)
             logger.info("%r", parameters)
-        self._impl.execute(operation, parameters)
-        yield From( self._conn._poll(waiter, timeout) )
+        try:
+            self._impl.execute(operation, parameters)
+        except:
+            self._conn._waiter = None
+            raise
+        else:
+            yield From( self._conn._poll(waiter, timeout) )
 
     @asyncio.coroutine
     def executemany(self, operation, seq_of_parameters):
@@ -135,8 +141,13 @@ class Cursor:
         if self._echo:
             logger.info("CALL %s", procname)
             logger.info("%r", parameters)
-        self._impl.callproc(procname, parameters)
-        yield From( self._conn._poll(waiter, timeout) )
+        try:
+            self._impl.callproc(procname, parameters)
+        except:
+            self._conn._waiter = None
+            raise
+        else:
+            yield From( self._conn._poll(waiter, timeout) )
 
     @asyncio.coroutine
     def mogrify(self, operation, parameters=None):
@@ -359,8 +370,12 @@ class Cursor:
         return self._timeout
 
     def __iter__(self):
-        item = yield From( self.fetchone() )
-        if item is None:
-            raise StopIteration
-        else:
-            raise Return( item )
+        warnings.warn("Iteration over cursor is deprecated",
+                      DeprecationWarning,
+                      stacklevel=2)
+        while True:
+            row = yield From( self.fetchone() )
+            if row is None:
+                raise StopIteration
+            else:
+                yield row

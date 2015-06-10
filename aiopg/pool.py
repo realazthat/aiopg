@@ -8,12 +8,17 @@ except ImportError:
     from trollius import From,Return
 
 import collections
+import sys
+import warnings
 
 
 from psycopg2.extensions import TRANSACTION_STATUS_IDLE
 
 from .connection import connect, TIMEOUT
 from .log import logger
+
+
+PY_341 = sys.version_info >= (3, 4, 1)
 
 
 @asyncio.coroutine
@@ -254,6 +259,22 @@ class Pool(asyncio.AbstractServer):
         #         conn.release()
         conn = yield From( self.acquire() )
         raise Return( _ConnectionContextManager(self, conn) )
+
+    if PY_341:  # pragma: no branch
+        def __del__(self):
+            try:
+                self._free
+            except AttributeError:
+                return  # frame has been cleared, __dict__ is empty
+            if self._free:
+                left = 0
+                while self._free:
+                    conn = self._free.popleft()
+                    conn.close()
+                    left += 1
+                warnings.warn(
+                    "Unclosed {} connections in {!r}".format(left, self),
+                    ResourceWarning)
 
 
 class _ConnectionContextManager:

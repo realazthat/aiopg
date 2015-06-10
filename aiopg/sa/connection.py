@@ -2,6 +2,7 @@ import asyncio
 import weakref
 
 from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.dml import UpdateBase
 from sqlalchemy.sql.ddl import DDLElement
 
 from . import exc
@@ -12,12 +13,13 @@ from .transaction import (RootTransaction, Transaction,
 
 class SAConnection:
 
-    def __init__(self, connection, dialect):
-        self._dialect = dialect
+    def __init__(self, connection, engine):
         self._connection = connection
         self._transaction = None
         self._savepoint_seq = 0
         self._weak_results = weakref.WeakSet()
+        self._engine = engine
+        self._dialect = engine.dialect
 
     @asyncio.coroutine
     def execute(self, query, *multiparams, **params):
@@ -26,31 +28,29 @@ class SAConnection:
         query - a SQL query string or any sqlalchemy expression.
 
         *multiparams/**params - represent bound parameter values to be
-        used in the execution.  Typically, the format is either a
-        collection of one or more dictionaries passed to
-        *multiparams:
+        used in the execution.  Typically, the format is a dictionary
+        passed to *multiparams:
 
-            conn.execute(
+            yield from conn.execute(
                 table.insert(),
                 {"id":1, "value":"v1"},
-                {"id":2, "value":"v2"}
             )
 
         ...or individual key/values interpreted by **params::
 
-            conn.execute(
+            yield from conn.execute(
                 table.insert(), id=1, value="v1"
             )
 
-        In the case that a plain SQL string is passed, a collection of
-        tuples or individual values in \*multiparams may be passed::
+        In the case that a plain SQL string is passed, a tuple or
+        individual values in \*multiparams may be passed::
 
-            conn.execute(
+            yield from conn.execute(
                 "INSERT INTO table (id, value) VALUES (%d, %s)",
-                (1, "v1"), (2, "v2")
+                (1, "v1")
             )
 
-            conn.execute(
+            yield from conn.execute(
                 "INSERT INTO table (id, value) VALUES (%s, %s)",
                 1, "v1"
             )
@@ -60,23 +60,28 @@ class SAConnection:
 
         """
         cursor = yield from self._connection.cursor()
+        dp = _distill_params(multiparams, params)
+        if len(dp) > 1:
+            raise exc.ArgumentError("aiopg doesn't support executemany")
+        elif dp:
+            dp = dp[0]
 
         if isinstance(query, str):
-            distilled_params = _distill_params(multiparams, params)
-            result_map = None
-            if len(distilled_params) > 1:
-                raise exc.ArgumentError("aiopg doesn't support executemany")
-            elif distilled_params:
-                distilled_params = distilled_params[0]
-            yield from cursor.execute(query, distilled_params)
+            yield from cursor.execute(query, dp)
         elif isinstance(query, ClauseElement):
-            if multiparams or params:
-                raise exc.ArgumentError("Don't mix sqlalchemy clause "
-                                        "and execution with parameters")
             compiled = query.compile(dialect=self._dialect)
             # parameters = compiled.params
             if not isinstance(query, DDLElement):
-                compiled_parameters = [compiled.construct_params()]
+                if dp and isinstance(dp, (list, tuple)):
+                    if isinstance(query, UpdateBase):
+                        dp = {c.key: pval
+                              for c, pval in zip(query.table.c, dp)}
+                    else:
+                        raise exc.ArgumentError("Don't mix sqlalchemy SELECT "
+                                                "clause with positional "
+                                                "parameters")
+                compiled_parameters = [compiled.construct_params(
+                    dp)]
                 processed_parameters = []
                 processors = compiled._bind_processors
                 for compiled_params in compiled_parameters:
@@ -87,17 +92,18 @@ class SAConnection:
                     processed_parameters.append(params)
                 post_processed_params = self._dialect.execute_sequence_format(
                     processed_parameters)
-                result_map = compiled.result_map
             else:
+                if dp:
+                    raise exc.ArgumentError("Don't mix sqlalchemy DDL clause "
+                                            "and execution with parameters")
                 post_processed_params = [compiled.construct_params()]
-                result_map = None
             yield from cursor.execute(str(compiled), post_processed_params[0])
         else:
             raise exc.ArgumentError("sql statement should be str or "
                                     "SQLAlchemy data "
                                     "selection/modification clause")
 
-        ret = ResultProxy(self, cursor, self._dialect, result_map)
+        ret = ResultProxy(self, cursor, self._dialect)
         self._weak_results.add(ret)
         return ret
 
@@ -276,7 +282,7 @@ class SAConnection:
     def commit_prepared(self, xid, *, is_prepared=True):
         """Commit prepared twophase transaction."""
         if is_prepared:
-            self.execute("COMMIT PREPARED '%s'" % xid)
+            yield from self.execute("COMMIT PREPARED '%s'" % xid)
         else:
             yield from self._commit_impl()
 
@@ -300,18 +306,17 @@ class SAConnection:
         After .close() is called, the SAConnection is permanently in a
         closed state, and will allow no further operations.
         """
-        try:
-            self._connection
-        except AttributeError:
-            pass
-        else:
-            if self._transaction is not None:
-                yield from self._transaction.rollback()
-            # don't close underlying connection, it can be reused by pool
-            # conn.close()
-            del self._connection
-        self._can_reconnect = False
-        self._transaction = None
+        if self._connection is None:
+            return
+
+        if self._transaction is not None:
+            yield from self._transaction.rollback()
+            self._transaction = None
+        # don't close underlying connection, it can be reused by pool
+        # conn.close()
+        self._engine.release(self)
+        self._connection = None
+        self._engine = None
 
 
 def _distill_params(multiparams, params):

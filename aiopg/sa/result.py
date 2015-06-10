@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 import weakref
 from collections.abc import Mapping, Sequence
 
@@ -111,15 +112,8 @@ class ResultMetaData(object):
             # if dialect.requires_name_normalize:
             #     colname = dialect.normalize_name(colname)
 
-            if result_proxy._result_map:
-                try:
-                    name, obj, type_ = result_proxy._result_map[colname]
-                except KeyError:
-                    name, obj, type_ = \
-                        colname, None, typemap.get(coltype, sqltypes.NULLTYPE)
-            else:
-                name, obj, type_ = \
-                    colname, None, typemap.get(coltype, sqltypes.NULLTYPE)
+            name, obj, type_ = \
+                colname, None, typemap.get(coltype, sqltypes.NULLTYPE)
 
             processor = type_._cached_result_processor(dialect, coltype)
 
@@ -217,12 +211,11 @@ class ResultProxy:
     the originating SQL statement that produced this result set.
     """
 
-    def __init__(self, connection, cursor, dialect, result_map):
+    def __init__(self, connection, cursor, dialect, result_map=None):
         self._dialect = dialect
         self._closed = False
         self._cursor = cursor
         self._connection = connection
-        self._result_map = result_map
         self._rowcount = cursor.rowcount
 
         if cursor.description is not None:
@@ -319,6 +312,9 @@ class ResultProxy:
             self._weak = None
 
     def __iter__(self):
+        warnings.warn("Iteration over ResultProxy is deprecated",
+                      DeprecationWarning,
+                      stacklevel=2)
         while True:
             row = yield from self.fetchone()
             if row is None:

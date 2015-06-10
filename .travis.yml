@@ -4,13 +4,20 @@ python:
   - "3.3"
   - "3.4"
 
+before_install:
+  - sudo apt-get update
+  - sudo /etc/init.d/postgresql stop
+  - sudo apt-get install -y postgresql-contrib-${PG}
+  - sudo /etc/init.d/postgresql start ${PG}
+  - sleep 5  # to wait for postgres server start
+
 install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -y postgresql-contrib
   - python setup.py install
   - pip install pyflakes
   - pip install pep8
   - pip install docutils
+  - pip install coverage
+  - pip install coveralls
   - test $USE_SA == 1 && pip install sqlalchemy || true
 
 before_script:
@@ -22,19 +29,26 @@ before_script:
 script:
   - pep8 aiopg examples tests
   - pyflakes .
-  - python runtests.py -v
+  - python runtests.py --coverage -v
   - python setup.py check -rms
 
-addons:
-  postgresql: "9.3"
+#addons:
+#  postgresql: "9.4"
 
 env:
   global:
     - PYTHON=python
   matrix:
-    - USE_SA=1 PYTHONASYNCIODEBUG=1
-    - USE_SA=0 PYTHONASYNCIODEBUG=1
-    - USE_SA=1 PYTHONASYNCIODEBUG=0
-    - USE_SA=0 PYTHONASYNCIODEBUG=0
+    - USE_SA=1 PYTHONASYNCIODEBUG=1 PG=9.3
+    - USE_SA=0 PYTHONASYNCIODEBUG=1 PG=9.3
+    - USE_SA=1 PYTHONASYNCIODEBUG=0 PG=9.3
+    - USE_SA=0 PYTHONASYNCIODEBUG=0 PG=9.3
+#    - USE_SA=1 PYTHONASYNCIODEBUG=1 PG=9.4
+#    - USE_SA=0 PYTHONASYNCIODEBUG=1 PG=9.4
+#    - USE_SA=1 PYTHONASYNCIODEBUG=0 PG=9.4
+#    - USE_SA=0 PYTHONASYNCIODEBUG=0 PG=9.4
 
 cache: apt
+
+after_script:
+  - coveralls

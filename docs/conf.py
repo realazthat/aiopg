@@ -26,7 +26,7 @@ def get_release():
             if match is not None:
                 return match.group(1)
         else:
-            raise RuntimeError('Cannot find version in aiozmq/__init__.py')
+            raise RuntimeError('Cannot find version in aiopg/__init__.py')
 
 
 def get_version(release):
@@ -69,7 +69,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'aiopg'
-copyright = '2014, Andrew Svetlov'
+copyright = '2014, 2015, Andrew Svetlov'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

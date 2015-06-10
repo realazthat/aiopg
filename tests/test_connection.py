@@ -6,6 +6,7 @@ import socket
 import random
 import unittest
 import time
+import sys
 
 from aiopg.connection import Connection, TIMEOUT
 from aiopg.cursor import Cursor
@@ -39,6 +40,7 @@ class TestConnection(unittest.TestCase):
         cur = yield from conn2.cursor()
         yield from cur.execute("DROP TABLE IF EXISTS foo")
         yield from conn2.close()
+        self.addCleanup(conn.close)
         return conn
 
     def test_connect(self):
@@ -619,5 +621,20 @@ class TestConnection(unittest.TestCase):
         def go():
             conn = yield from self.connect(echo=True)
             self.assertTrue(conn.echo)
+
+        self.loop.run_until_complete(go())
+
+    @unittest.skipIf(sys.version_info < (3, 4),
+                     "Python 3.3 doesnt support __del__ calls from GC")
+    def test___del__(self):
+        @asyncio.coroutine
+        def go():
+            conn = yield from aiopg.connect(database='aiopg',
+                                            user='aiopg',
+                                            password='passwd',
+                                            host='127.0.0.1',
+                                            loop=self.loop)
+            with self.assertWarns(ResourceWarning):
+                del conn
 
         self.loop.run_until_complete(go())
