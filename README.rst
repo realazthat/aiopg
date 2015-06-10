@@ -19,6 +19,7 @@ Example
     from trollius import From, Return
     import trollius as asyncio
     from aiopg_trollius.pool import create_pool
+    from contextlib import closing, contextmanager
 
     dsn = 'dbname=jetty user=nick password=1234 host=localhost port=5432'
 
